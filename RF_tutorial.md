@@ -126,7 +126,7 @@ tables[["Species_clr_withCD"]] <- make_clr(summarize_taxa(otu_table,otu_taxonomy
 tables[["Species_proportion_withCD"]] <- make_proportion(summarize_taxa(otu_table,otu_taxonomy %>% 
   tibble::column_to_rownames("FeatureID"))$Species)
 
-# to further increase the robustness of our model, we will test the model performance after _C. difficile_ OTUs so that the model doesn't cheat!
+# to further increase the robustness of our model, we will test the model performance after C. difficile OTUs so that the model doesn't cheat!
 
 no_cd_taxonomy <- filter(otu_taxonomy,Genus %in% "Peptoclostridium")
 otu_table_nocd <- otu_table[!rownames(otu_table) %in% no_cd_taxonomy$FeatureID,]
