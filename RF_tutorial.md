@@ -141,6 +141,9 @@ tables[["Species_proportion_withoutCD"]] <- make_proportion(summarize_taxa(otu_t
 
 #### Define Do_RF
 ```
+dir.create("figures")
+dir.create("figures/validation")
+
 # define the function
 Do_RF <- function(a,training_meta,test_meta,ext_meta, label){
   ROC<-list()
