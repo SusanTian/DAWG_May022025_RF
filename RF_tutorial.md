@@ -278,17 +278,9 @@ auc_plot_ext <- auc_ext_study %>% unlist() %>% data.frame(AUC=.) %>%
 
 auc_plot_ext <- 
 auc_plot_ext %>% 
-  mutate(StudyID=case_when(Iteration==1~"Zuo_2018",
-                   Iteration==2~"Seekatz_2016",
-                   Iteration==3~"Seekatz_2018",
-                   Iteration==4~"Schubert_2014",
-                   Iteration==5~"PRJNA379979",
-                   Iteration==6~"Weingarden_2015",
-                   Iteration==7~"Rojo_2015",
-                   Iteration==8~"Ling_2014",
-                   Iteration==9~"Song_2013",
-                   Iteration==10~"PRJNA259188",
-                   Iteration==11~"Schneider_2017"))
+  mutate(StudyID=case_when(Iteration==1~"Nygren_2023",
+                   Iteration==2~"Seekatz_2018",
+                   Iteration==3~"Weingarden_2015"))
 auc_plot_ext <- 
   auc_plot_ext %>% 
   left_join(metadata %>%
@@ -297,32 +289,6 @@ auc_plot_ext <-
   arrange(desc(Nsamples)) %>%
   ungroup() %>%
   mutate(StudyID=factor(StudyID, levels=unique(StudyID))))
-
-#auc_plot_ext %>%
-  mutate(Group=paste(Feature_Type,Normalization,`Cdiff Inclusion`,sep = "_")) %>% 
-  ggplot(aes(x=Nsamples,y=AUC))+
-  geom_col()+
-  facet_wrap(~Group)
-
-auc_plot %>% 
-  mutate(Normalization=if_else(Normalization=="proportion","Proportion","Log Ratio")) %>% 
-  ggplot(aes(x=Feature_Type,y=AUC,fill=Normalization))+
-  geom_boxplot()+
-  theme_q2r() +
-  xlab("Feature Type") +
-  ylab("AUC")+
-  facet_grid(~`Cdiff Inclusion`)
-ggsave("figures/AUC_boxplot.pdf", height=5, width=6, useDingbats=F)  
-
-auc_plot_ext %>% 
-  mutate(Normalization=if_else(Normalization=="proportion","Proportion","Log Ratio")) %>% 
-  ggplot(aes(x=Feature_Type,y=AUC,fill=Normalization))+
-  geom_boxplot()+
-  theme_q2r() +
-  xlab("Feature Type") +
-  ylab("AUC")+
-  facet_grid(~`Cdiff Inclusion`)
-#ggsave("figures/AUC_boxplot_external_study.pdf", height=5, width=6, useDingbats=F)
 
 merged_boxplot <- 
   bind_rows(auc_plot,auc_plot_ext) %>% 
@@ -336,9 +302,59 @@ merged_boxplot %>%
   xlab("Feature Type") +
   ylab("AUC")+
   facet_grid(External_Study~`Cdiff Inclusion`)
-#ggsave("figures/AUC_boxplot_combined.pdf", height=8, width=8, useDingbats=F)
 
 rm(auc_plot)
 rm(auc_plot_ext)
 rm(merged_boxplot)
 ```
+looks like species proportion gives the highest AUC. 
+
+#### Mean Decrease GINI figure
+```{r}
+importance[grep("Species_proportion_withoutCD",names(importance))] %>% do.call(bind_rows,.) %>%
+  group_by(FeatureID) %>%
+  summarize(Mean=mean(MeanDecreaseGini), sd=sd(MeanDecreaseGini)) %>%
+  arrange(desc(Mean)) %>%
+  mutate(Rank=1:nrow(.)) %>%
+  ggplot(aes(x=log10(Rank), y=Mean, ymin=Mean-sd, ymax=Mean+sd)) +
+  geom_ribbon(fill="#BDBDBD", alpha=0.8) +
+  geom_line(linetype="dashed", color="grey40") +
+  geom_vline(xintercept = log10(500), linetype=2,color="grey40")+
+  ylab("Mean Decrease Gini")+
+  #coord_cartesian(ylim=c(0,2.8))+
+  theme_q2r()
+```
+
+
+#### AUROC curves
+```
+bind_rows(
+  ROC_Table[grep("Species_proportion_withCD",names(ROC_Table))] %>% 
+    do.call(bind_rows,.) %>% 
+    mutate(Group="Cd_included"),
+  ROC_Table[grep("Species_proportion_withoutCD",names(ROC_Table))] %>% 
+    do.call(bind_rows,.) %>% 
+    mutate(Group="Cd_excluded")) %>% 
+  mutate(Data_Type=gsub("\\d","",Data_Type)) %>% 
+  separate(Data_Type, c("Type","Normalization","CD"), sep="_") %>%
+  filter(Type=="Species" & Normalization=="proportion") %>%
+  mutate(FPRr=if_else(FPR>0 & TPR>0, plyr::round_any(FPR, 0.1, ceiling) ,0)) %>%#round to nearest 0.05
+  mutate(TPRr=if_else(TPR>0 & TPR>0, plyr::round_any(TPR, 0.1, ceiling) ,0)) %>%#round to nearest 0.05
+  mutate(rFPR=round(FPR/0.05)*0.05) %>%
+  ggplot(aes(x=rFPR, y=TPRr, fill=CD, group=CD)) +
+  stat_summary(geom="ribbon", alpha=0.5, fun.data=mean_se) +
+  stat_summary(geom="line", aes(color=CD), linetype="dashed") +
+  #geom_point(shape=21) +
+  #geom_line() +
+  geom_abline(linetype="dashed", color="grey50") +
+  #geom_smooth(aes(color=CD)) +
+  coord_cartesian(ylim=c(0,1), xlim=c(0,1)) +
+  theme_q2r() +
+  scale_fill_manual(values=c("indianred","cornflowerblue")) +
+  scale_color_manual(values=c("indianred","cornflowerblue")) +
+  theme(legend.position="none")
+```
+
+#### How does the result of these 3 dataset compared to the full dataset? 
+![Figure 1: Meta-analysis](https://github.com/SusanTian/DAWG_May022025_RF/blob/main/Screenshot%202025-05-01%20at%2012.21.22.png?raw=true)
+![ROC Curve](https://raw.githubusercontent.com/SusanTian/DAWG_May022025_RF/main/Screenshot%202025-05-01%20at%2019.40.48.png)
