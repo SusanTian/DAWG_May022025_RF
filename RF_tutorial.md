@@ -166,7 +166,7 @@ ROC$Importance %>%
   ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
   geom_line() +
   geom_vline(xintercept=500, linetype="dashed", color="grey50")
-ggsave(paste0("figures/10_fold_validation/rf_importance_",label,".pdf"),p, height=3, width=3)
+ggsave(paste0("figures/validation/rf_importance_",label,".pdf"),p, height=3, width=3)
 
 p <- 
 ROC$Importance %>%
