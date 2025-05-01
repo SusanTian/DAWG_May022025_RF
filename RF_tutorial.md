@@ -141,7 +141,6 @@ tables[["Species_proportion_withoutCD"]] <- make_proportion(summarize_taxa(otu_t
 
 #### Define Do_RF
 ```
-dir.create("figures")
 dir.create("figures/validation")
 
 # define the function
