@@ -57,5 +57,43 @@ Random forest has three primary hyperparameters: node size, number of trees, and
 
 _This diagram illustrates how decision trees split nodes based on feature thresholds and stopping_
 
-### Let's get into a real example with RF classification with sequencing data
-the goal is to identify the features are most important in predicting _C. difficile_ colonized microbiome. You can access the reference paper here: [Susan Tian - DAWG RandomForest - Meta-analysis](https://github.com/SusanTian/DAWG_RandomForest/blob/main/Figure1_metaanalysis%20(1).pdf)
+## Let's get into a real example with RF classification with sequencing data
+the goal is to identify the features are most important in predicting _C. difficile_ colonized microbiome. You can access the reference paper here: [Susan Tian - DAWG RandomForest - Meta-analysis]
+![Figure 1: Meta-analysis](https://github.com/SusanTian/DAWG_May022025_RF/blob/main/Screenshot%202025-05-01%20at%2012.21.22.png?raw=true)
+As Panel C-H showed, the microbiome diversity has gone down in _C. difficile_ colonized microbiomes and the microbiota composition shifted from healthy counterparts. Will the missing microbes essential to providing colonization resistance to _C. difficile_? Can we predict _C. difficile_ infection (CDI) status using these microbes? Let's see if we can use random forest to predict _C. difficile_ colonization status. 
+
+### Loading packages
+```
+# Suppress messages for cleaner output
+suppressMessages({
+
+  # List of CRAN packages
+  cran_packages <- c("tidyverse", "readxl", "randomForest", "ROCR")
+
+  # Install missing CRAN packages
+  installed <- rownames(installed.packages())
+  for (pkg in cran_packages) {
+    if (!pkg %in% installed) {
+      install.packages(pkg, dependencies = TRUE)
+    }
+  }
+
+  # Install qiime2R from GitHub if not already installed
+  if (!"qiime2R" %in% installed) {
+    if (!require("devtools")) install.packages("devtools")
+    devtools::install_github("jbisanz/qiime2R", quiet = TRUE)
+  }
+
+  # Load all packages
+  all_packages <- c(cran_packages, "qiime2R")
+  invisible(lapply(all_packages, function(pkg) library(pkg, character.only = TRUE, quietly = TRUE)))
+  
+  message("All packages are installed and loaded.")
+})
+```
+
+### Next load the datasets and metadata
+to make the computation faster, I filtered out the sequences from three studies out of 12 studies (59 out of 899 samples). What do you think this is going to affect the result than running the full meta-analysis dataset? 
+```
+
+```
