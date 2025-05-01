@@ -95,5 +95,42 @@ suppressMessages({
 ### Next load the datasets and metadata
 to make the computation faster, I filtered out the sequences from three studies out of 12 studies (59 out of 899 samples). What do you think this is going to affect the result than running the full meta-analysis dataset? 
 ```
+metadata <- read_csv("https://raw.githubusercontent.com/SusanTian/DAWG_May022025_RF/main/metadata.csv")
+metadata %>% interactive_table()
+
+otu_table <- readRDS(url("https://raw.githubusercontent.com/SusanTian/DAWG_May022025_RF/main/OTU_table.RDS"))
+otu_table_subsampled <- otu_table %>% subsample_table()
+
+otu_taxonomy <- read_csv("https://raw.githubusercontent.com/SusanTian/DAWG_May022025_RF/main/OTU_taxonomy.csv")
+```
+Different samples often have different numbers of sequencing reads due to technical variation. Subsampling brings all samples to the same read count, so comparisons aren’t biased by depth. Subsampling also ensures that diversity differences reflect biology, not sequencing effort (alpha and beta diversity are sensitive to sequencing depth. Many statistical models assume equal observation effort across groups—subsampling helps meet that assumption.
+
+### Building the model
+Each time, we will exclude one study to do external validation (this is a new dataset that the model has never seen) to increase robustness. We will also write this into a loop so that we are not manually doing it for each study. 
+
+#### getting ready by defining tables
+```
+predictions <- list()
+importance <- list()
+auc <- list()
+ROC_Table <- list()
+tables <- list()
+predictions_ext_study <- list()
+auc_ext_study <- list()
+ROC_Table_ext_study <- list()
+ext_study_list <- metadata$StudyID %>% unique()
+
+tables[["OTU_proportion_withCD"]] <- make_proportion(otu_table)
+tables[["OTU_clr_withCD"]] <- make_clr(otu_table)
+tables[["Species_clr_withCD"]] <- make_clr(summarize_taxa(otu_table,otu_taxonomy %>% tibble::column_to_rownames("FeatureID"))$Species)
+tables[["Species_proportion_withCD"]] <- make_proportion(summarize_taxa(otu_table,otu_taxonomy %>% 
+  tibble::column_to_rownames("FeatureID"))$Species)
+
+# to further increase the robustness of our model, we will test the model performance after _C. difficile_ OTUs so that the model doesn't cheat!
+
+no_cd_taxonomy <- filter(otu_taxonomy,Genus %in% "Peptoclostridium")
+otu_table_nocd <- otu_table[!rownames(otu_table) %in% no_cd_taxonomy$FeatureID,]
+temp_otutable <- filter_features(otu_table,minsamples = 3, minreads = 3) %>% t()
+temp_otutable <- temp_otutable[,!colnames(temp_otutable)%in%no_cd_taxonomy$FeatureID]
 
 ```
