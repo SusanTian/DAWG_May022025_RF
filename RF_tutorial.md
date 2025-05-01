@@ -63,9 +63,9 @@ the goal is to identify the features are most important in predicting _C. diffic
 As Panel C-H showed, the microbiome diversity has gone down in _C. difficile_ colonized microbiomes and the microbiota composition shifted from healthy counterparts. Will the missing microbes essential to providing colonization resistance to _C. difficile_? Can we predict _C. difficile_ infection (CDI) status using these microbes? Let's see if we can use random forest to predict _C. difficile_ colonization status. 
 
 ### Loading packages
-```
+```{R}
 # Suppress messages for cleaner output
-suppressMessages({
+{
 
   # List of CRAN packages
   cran_packages <- c("tidyverse", "readxl", "randomForest", "ROCR")
@@ -89,7 +89,7 @@ suppressMessages({
   invisible(lapply(all_packages, function(pkg) library(pkg, character.only = TRUE, quietly = TRUE)))
   
   message("All packages are installed and loaded.")
-})
+}
 ```
 
 ### Next load the datasets and metadata
@@ -120,7 +120,6 @@ auc_ext_study <- list()
 ROC_Table_ext_study <- list()
 ext_study_list <- metadata$StudyID %>% unique()
 
-tables[["OTU_proportion_withCD"]] <- make_proportion(otu_table)
 tables[["OTU_clr_withCD"]] <- make_clr(otu_table)
 tables[["Species_clr_withCD"]] <- make_clr(summarize_taxa(otu_table,otu_taxonomy %>% tibble::column_to_rownames("FeatureID"))$Species)
 tables[["Species_proportion_withCD"]] <- make_proportion(summarize_taxa(otu_table,otu_taxonomy %>% 
@@ -133,4 +132,213 @@ otu_table_nocd <- otu_table[!rownames(otu_table) %in% no_cd_taxonomy$FeatureID,]
 temp_otutable <- filter_features(otu_table,minsamples = 3, minreads = 3) %>% t()
 temp_otutable <- temp_otutable[,!colnames(temp_otutable)%in%no_cd_taxonomy$FeatureID]
 
+tables[["OTU_clr_withoutCD"]] <- make_clr(otu_table_nocd)
+tables[["Species_clr_withoutCD"]] <- make_clr(summarize_taxa(otu_table_nocd,otu_taxonomy %>% 
+  tibble::column_to_rownames("FeatureID"))$Species)
+tables[["Species_proportion_withoutCD"]] <- make_proportion(summarize_taxa(otu_table_nocd,otu_taxonomy %>% 
+  tibble::column_to_rownames("FeatureID"))$Species)
+```
+
+#### Define Do_RF
+```
+# define the function
+Do_RF <- function(a,training_meta,test_meta,ext_meta, label){
+  ROC<-list()
+
+# training the model
+ROC$Model<-randomForest(x=a[,training_meta$SampleID] %>% t(), y=training_meta$Cdifficile, importance=TRUE)
+
+# Extracts the MeanDecreaseGini importance score for each feature.
+# also add ranking to the importance on descending order
+ROC$Importance<-
+  ROC$Model$importance %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("FeatureID") %>% 
+  arrange(desc(MeanDecreaseGini)) %>%
+  mutate(Rank=1:nrow(.))
+
+# Saves two feature importance plots: one full, one zoomed into the top 500
+p <- 
+ROC$Importance %>%
+  ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
+  geom_line() +
+  geom_vline(xintercept=500, linetype="dashed", color="grey50")
+ggsave(paste0("figures/10_fold_validation/rf_importance_",label,".pdf"),p, height=3, width=3)
+
+p <- 
+ROC$Importance %>%
+  filter(Rank<500) %>%
+  ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
+  geom_line()
+ggsave(paste0("figures/validation/rf_importance_top_",label,".pdf"),p, height=3, width=3)
+
+# Exports the importance table to a .tsv file
+ROC$Importance %>%
+  readr::write_tsv(paste0("figures/validation/rf_importance_table_",label,".tsv"))
+
+# Gets probability predictions (for class = 1) for both test datasets
+# Computes ROC curve (TPR vs FPR) 
+ROC$Predictions<-predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
+             prediction(., test_meta$Cdifficile) %>%
+             performance(., "tpr","fpr")
+ROC$Predictions_ext_study<-predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
+             prediction(., ext_meta$Cdifficile) %>%
+             performance(., "tpr","for")
+
+# Calculates Area Under the Curve (AUC) for both test sets
+ROC$AUC<-
+predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
+             prediction(., test_meta$Cdifficile) %>%
+             performance(., "auc") %>%
+             .@y.values %>%
+             as.numeric()
+ROC$AUC_ext_study<-
+predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
+             prediction(., ext_meta$Cdifficile) %>%
+             performance(., "auc") %>%
+             .@y.values %>%
+             as.numeric()
+
+# Converts the ROC object into a tidy tibble for plotting
+ROC$ROC_Table<-tibble(FPR=unlist(ROC$Predictions@x.values), TPR=unlist(ROC$Predictions@y.values)) %>% 
+  mutate(Data_Type=label)
+ROC$ROC_Table_ext_study<-tibble(FPR=unlist(ROC$Predictions_ext_study@x.values), TPR=unlist(ROC$Predictions_ext_study@y.values)) %>% 
+  mutate(Data_Type=label)
+
+# Generates and saves ROC plots for internal and external validations
+p <- 
+ROC$ROC_Table %>%
+  ggplot(aes(x=FPR, y=TPR)) +
+  geom_line() +
+  theme_q2r() +
+  geom_abline(linetype="dashed", color="grey50") +
+  ylab("True Positive Rate") +
+  xlab("False Positive Rate") +
+  ggtitle(paste0(label, " AUC=", ROC$AUC))
+ggsave(paste0("figures/validation/ROC_plot_",label,".pdf"),p, height=3, width=3)
+
+p <- 
+ROC$ROC_Table_ext_study %>%
+  ggplot(aes(x=FPR, y=TPR)) +
+  geom_line() +
+  theme_q2r() +
+  geom_abline(linetype="dashed", color="grey50") +
+  ylab("True Positive Rate") +
+  xlab("False Positive Rate") +
+  ggtitle(paste0(label, " AUC=", ROC$AUC_ext_study))
+ggsave(paste0("figures/validation/ROC_plot__ext_study_",label,".pdf"),p, height=3, width=3)
+
+# Returns the ROC list containing model, importance, predictions, AUC, and plots.
+return(ROC)
+}
+```
+
+#### Running Random Forest 
+Setting a seed in random forest ensures reproducibility by making the random processes (like bootstrapping and feature selection) generate the same results each time the code is run. If you want every run to be different, a tip would be using today's date as a seed. Whereas you want to have reproducible runs, set the seed and reuse it. 
+```
+for (i in (1:3)){
+  set.seed(i)
+  message(i)
+  ext_study <- sample(ext_study_list,1)
+  ext_study_list <- ext_study_list[!ext_study_list %in% ext_study]
+  message(ext_study)
+  message(ext_study_list)
+  rf_metadata <- metadata %>% mutate(Cdifficile=ifelse(Cdifficile,"Positive","Negative") %>% as.factor())
+  ext_meta <- rf_metadata %>% filter(StudyID==ext_study)
+  rf_metadata <- rf_metadata %>% filter(StudyID!=ext_study)
+  training_meta <- rf_metadata %>% sample_n(round(2/3*nrow(rf_metadata))) # training the model with 2/3 of the samples
+  test_meta <- rf_metadata %>% filter(!SampleID %in% training_meta$SampleID) # test the model with the rest
+
+  
+  for (a in names(tables)){
+  message(a)
+    result <- Do_RF(tables[[a]],training_meta,test_meta, ext_meta, paste0(a,i))
+    importance[[paste(a,i, sep = "_")]] <- result$Importance
+    predictions[[paste(a,i, sep = "_")]] <- result$Predictions
+    auc[[paste(a,i, sep = "_")]] <- result$AUC
+    ROC_Table[[paste(a,i, sep = "_")]] <- result$ROC_Table 
+    
+    message(ext_study)
+    predictions_ext_study[[paste(a,i, sep = "_")]] <- result$Predictions_ext_study
+    auc_ext_study[[paste(a,i, sep = "_")]] <- result$AUC_ext_study
+    ROC_Table_ext_study[[paste(a,i, sep = "_")]] <- result$ROC_Table_ext_study %>% mutate(StudyID=ext_study)
+  }
+}
+```
+
+#### Now let's examine the model! 
+```
+auc_plot <- auc %>% unlist() %>% data.frame(AUC=.) %>% 
+  tibble::rownames_to_column("Name") %>% 
+  separate(.,Name,into = c("Feature_Type","Normalization","Cdiff Inclusion","Iteration"),sep="_",remove=FALSE)
+
+auc_plot_ext <- auc_ext_study %>% unlist() %>% data.frame(AUC=.) %>% 
+  tibble::rownames_to_column("Name") %>% 
+  separate(.,Name,into = c("Feature_Type","Normalization","Cdiff Inclusion","Iteration"),sep="_",remove=FALSE)
+
+auc_plot_ext <- 
+auc_plot_ext %>% 
+  mutate(StudyID=case_when(Iteration==1~"Zuo_2018",
+                   Iteration==2~"Seekatz_2016",
+                   Iteration==3~"Seekatz_2018",
+                   Iteration==4~"Schubert_2014",
+                   Iteration==5~"PRJNA379979",
+                   Iteration==6~"Weingarden_2015",
+                   Iteration==7~"Rojo_2015",
+                   Iteration==8~"Ling_2014",
+                   Iteration==9~"Song_2013",
+                   Iteration==10~"PRJNA259188",
+                   Iteration==11~"Schneider_2017"))
+auc_plot_ext <- 
+  auc_plot_ext %>% 
+  left_join(metadata %>%
+  group_by(StudyID) %>%
+  summarize(Nsamples=n()) %>%
+  arrange(desc(Nsamples)) %>%
+  ungroup() %>%
+  mutate(StudyID=factor(StudyID, levels=unique(StudyID))))
+
+#auc_plot_ext %>%
+  mutate(Group=paste(Feature_Type,Normalization,`Cdiff Inclusion`,sep = "_")) %>% 
+  ggplot(aes(x=Nsamples,y=AUC))+
+  geom_col()+
+  facet_wrap(~Group)
+
+auc_plot %>% 
+  mutate(Normalization=if_else(Normalization=="proportion","Proportion","Log Ratio")) %>% 
+  ggplot(aes(x=Feature_Type,y=AUC,fill=Normalization))+
+  geom_boxplot()+
+  theme_q2r() +
+  xlab("Feature Type") +
+  ylab("AUC")+
+  facet_grid(~`Cdiff Inclusion`)
+ggsave("figures/AUC_boxplot.pdf", height=5, width=6, useDingbats=F)  
+
+auc_plot_ext %>% 
+  mutate(Normalization=if_else(Normalization=="proportion","Proportion","Log Ratio")) %>% 
+  ggplot(aes(x=Feature_Type,y=AUC,fill=Normalization))+
+  geom_boxplot()+
+  theme_q2r() +
+  xlab("Feature Type") +
+  ylab("AUC")+
+  facet_grid(~`Cdiff Inclusion`)
+#ggsave("figures/AUC_boxplot_external_study.pdf", height=5, width=6, useDingbats=F)
+
+merged_boxplot <- 
+  bind_rows(auc_plot,auc_plot_ext) %>% 
+  mutate(External_Study=if_else(!is.na(StudyID),"External Studies","Combined Analysis"))
+
+merged_boxplot %>% 
+  mutate(Normalization=if_else(Normalization=="proportion","Proportion","Log Ratio")) %>% 
+  ggplot(aes(x=Feature_Type,y=AUC,fill=Normalization))+
+  geom_boxplot()+
+  theme_q2r() +
+  xlab("Feature Type") +
+  ylab("AUC")+
+  facet_grid(External_Study~`Cdiff Inclusion`)
+#ggsave("figures/AUC_boxplot_combined.pdf", height=8, width=8, useDingbats=F)
+
+rm(auc_plot)
+rm(auc_plot_ext)
+rm(merged_boxplot)
 ```
