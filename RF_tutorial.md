@@ -123,7 +123,7 @@ ext_study_list <- metadata$StudyID %>% unique()
 tables[["OTU_clr_withCD"]] <- make_clr(otu_table)
 tables[["Species_clr_withCD"]] <- make_clr(summarize_taxa(otu_table,otu_taxonomy %>% tibble::column_to_rownames("FeatureID"))$Species)
 tables[["Species_proportion_withCD"]] <- make_proportion(summarize_taxa(otu_table,otu_taxonomy %>% 
-  tibble::column_to_rownames("FeatureID"))$Species)
+                                                                 tibble::column_to_rownames("FeatureID"))$Species)
 
 # to further increase the robustness of our model, we will test the model performance after C. difficile OTUs so that the model doesn't cheat!
 
@@ -132,11 +132,12 @@ otu_table_nocd <- otu_table[!rownames(otu_table) %in% no_cd_taxonomy$FeatureID,]
 temp_otutable <- filter_features(otu_table,minsamples = 3, minreads = 3) %>% t()
 temp_otutable <- temp_otutable[,!colnames(temp_otutable)%in%no_cd_taxonomy$FeatureID]
 
+
 tables[["OTU_clr_withoutCD"]] <- make_clr(otu_table_nocd)
 tables[["Species_clr_withoutCD"]] <- make_clr(summarize_taxa(otu_table_nocd,otu_taxonomy %>% 
-  tibble::column_to_rownames("FeatureID"))$Species)
+                                                               tibble::column_to_rownames("FeatureID"))$Species)
 tables[["Species_proportion_withoutCD"]] <- make_proportion(summarize_taxa(otu_table_nocd,otu_taxonomy %>% 
-  tibble::column_to_rownames("FeatureID"))$Species)
+                                                                             tibble::column_to_rownames("FeatureID"))$Species)
 ```
 
 #### Define Do_RF
@@ -149,87 +150,89 @@ Do_RF <- function(a,training_meta,test_meta,ext_meta, label){
 
 # training the model
 ROC$Model<-randomForest(x=a[,training_meta$SampleID] %>% t(), y=training_meta$Cdifficile, importance=TRUE)
-
+  
 # Extracts the MeanDecreaseGini importance score for each feature.
 # also add ranking to the importance on descending order
 ROC$Importance<-
-  ROC$Model$importance %>% 
-  as.data.frame() %>% 
-  tibble::rownames_to_column("FeatureID") %>% 
-  arrange(desc(MeanDecreaseGini)) %>%
-  mutate(Rank=1:nrow(.))
+    ROC$Model$importance %>% 
+    as.data.frame() %>% 
+    tibble::rownames_to_column("FeatureID") %>% 
+    arrange(desc(MeanDecreaseGini)) %>%
+    mutate(Rank=1:nrow(.))
 
 # Saves two feature importance plots: one full, one zoomed into the top 500
 p <- 
-ROC$Importance %>%
-  ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
-  geom_line() +
-  geom_vline(xintercept=500, linetype="dashed", color="grey50")
-ggsave(paste0("figures/validation/rf_importance_",label,".pdf"),p, height=3, width=3)
-
-p <- 
-ROC$Importance %>%
-  filter(Rank<500) %>%
-  ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
-  geom_line()
-ggsave(paste0("figures/validation/rf_importance_top_",label,".pdf"),p, height=3, width=3)
-
+    ROC$Importance %>%
+    ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
+    geom_line() +
+    geom_vline(xintercept=500, linetype="dashed", color="grey50")
+  ggsave(paste0("figures/validation/rf_importance_",label,".pdf"),p, height=3, width=3)
+  
+ p <- 
+    ROC$Importance %>%
+    filter(Rank<500) %>%
+    ggplot(aes(x=Rank, y=MeanDecreaseGini)) +
+    geom_line()
+  ggsave(paste0("figures/validation/rf_importance_top_",label,".pdf"),p, height=3, width=3)
+ 
 # Exports the importance table to a .tsv file
 ROC$Importance %>%
-  readr::write_tsv(paste0("figures/validation/rf_importance_table_",label,".tsv"))
+    readr::write_tsv(paste0("figures/validation/rf_importance_table_",label,".tsv"))
+
 
 # Gets probability predictions (for class = 1) for both test datasets
 # Computes ROC curve (TPR vs FPR) 
-ROC$Predictions<-predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
-             prediction(., test_meta$Cdifficile) %>%
-             performance(., "tpr","fpr")
-ROC$Predictions_ext_study<-predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
-             prediction(., ext_meta$Cdifficile) %>%
-             performance(., "tpr","for")
+ ROC$Predictions<-predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
+    prediction(., test_meta$Cdifficile) %>%
+    performance(., "tpr","fpr")
+  ROC$Predictions_ext_study<-predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
+    prediction(., ext_meta$Cdifficile) %>%
+    performance(., "tpr","fpr")
 
 # Calculates Area Under the Curve (AUC) for both test sets
 ROC$AUC<-
-predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
-             prediction(., test_meta$Cdifficile) %>%
-             performance(., "auc") %>%
-             .@y.values %>%
-             as.numeric()
-ROC$AUC_ext_study<-
-predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
-             prediction(., ext_meta$Cdifficile) %>%
-             performance(., "auc") %>%
-             .@y.values %>%
-             as.numeric()
+    predict(ROC$Model, newdata=a[,test_meta$SampleID] %>% t(), type="prob")[,2] %>%
+    prediction(., test_meta$Cdifficile) %>%
+    performance(., "auc") %>%
+    .@y.values %>%
+    as.numeric()
+  ROC$AUC_ext_study<-
+    predict(ROC$Model, newdata=a[,ext_meta$SampleID] %>% t(), type="prob")[,2] %>%
+    prediction(., ext_meta$Cdifficile) %>%
+    performance(., "auc") %>%
+    .@y.values %>%
+    as.numeric()
 
 # Converts the ROC object into a tidy tibble for plotting
-ROC$ROC_Table<-tibble(FPR=unlist(ROC$Predictions@x.values), TPR=unlist(ROC$Predictions@y.values)) %>% 
-  mutate(Data_Type=label)
-ROC$ROC_Table_ext_study<-tibble(FPR=unlist(ROC$Predictions_ext_study@x.values), TPR=unlist(ROC$Predictions_ext_study@y.values)) %>% 
-  mutate(Data_Type=label)
+  ROC$ROC_Table<-tibble(FPR=unlist(ROC$Predictions@x.values), TPR=unlist(ROC$Predictions@y.values)) %>% 
+    mutate(Data_Type=label)
+  ROC$ROC_Table_ext_study<-tibble(FPR=unlist(ROC$Predictions_ext_study@x.values), TPR=unlist(ROC$Predictions_ext_study@y.values)) %>% 
+    mutate(Data_Type=label)
 
 # Generates and saves ROC plots for internal and external validations
-p <- 
-ROC$ROC_Table %>%
-  ggplot(aes(x=FPR, y=TPR)) +
-  geom_line() +
-  theme_q2r() +
-  geom_abline(linetype="dashed", color="grey50") +
-  ylab("True Positive Rate") +
-  xlab("False Positive Rate") +
-  ggtitle(paste0(label, " AUC=", ROC$AUC))
-ggsave(paste0("figures/validation/ROC_plot_",label,".pdf"),p, height=3, width=3)
+ p <- 
+    ROC$ROC_Table %>%
+    ggplot(aes(x=FPR, y=TPR)) +
+    geom_line() +
+    theme_q2r() +
+    geom_abline(linetype="dashed", color="grey50") +
+    ylab("True Positive Rate") +
+    xlab("False Positive Rate") +
+    ggtitle(paste0(label, " AUC=", ROC$AUC))
+  ggsave(paste0("figures/validation/ROC_plot_",label,".pdf"),p, height=3, width=3)
+  
 
 p <- 
-ROC$ROC_Table_ext_study %>%
-  ggplot(aes(x=FPR, y=TPR)) +
-  geom_line() +
-  theme_q2r() +
-  geom_abline(linetype="dashed", color="grey50") +
-  ylab("True Positive Rate") +
-  xlab("False Positive Rate") +
-  ggtitle(paste0(label, " AUC=", ROC$AUC_ext_study))
-ggsave(paste0("figures/validation/ROC_plot__ext_study_",label,".pdf"),p, height=3, width=3)
-
+    ROC$ROC_Table_ext_study %>%
+    ggplot(aes(x=FPR, y=TPR)) +
+    geom_line() +
+    theme_q2r() +
+    geom_abline(linetype="dashed", color="grey50") +
+    ylab("True Positive Rate") +
+    xlab("False Positive Rate") +
+    ggtitle(paste0(label, " AUC=", ROC$AUC_ext_study))
+  ggsave(paste0("figures/validation/ROC_plot__ext_study_",label,".pdf"),p, height=3, width=3)
+  
 # Returns the ROC list containing model, importance, predictions, AUC, and plots.
 return(ROC)
 }
