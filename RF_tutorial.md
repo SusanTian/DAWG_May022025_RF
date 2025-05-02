@@ -254,10 +254,10 @@ for (i in (1:3)){
   rf_metadata <- rf_metadata %>% filter(StudyID!=ext_study)
   training_meta <- rf_metadata %>% sample_n(round(2/3*nrow(rf_metadata))) # training the model with 2/3 of the samples
   test_meta <- rf_metadata %>% filter(!SampleID %in% training_meta$SampleID) # test the model with the rest
-
+  
   
   for (a in names(tables)){
-  message(a)
+    message(a)
     result <- Do_RF(tables[[a]],training_meta,test_meta, ext_meta, paste0(a,i))
     importance[[paste(a,i, sep = "_")]] <- result$Importance
     predictions[[paste(a,i, sep = "_")]] <- result$Predictions
